@@ -68,37 +68,44 @@ app.get('/users/:id', (req, res) => {
   });
 });
 
-app.put('/users/update', [
+app.put('/users/update/:id', [
   body('email_address').isEmail().withMessage('Debe proporcionar un correo electrónico válido.'),
   body('first_name').optional().trim().escape(),
   body('last_name').optional().trim().escape(),
   body('phone_number').optional().trim().escape(),
+  body('password').optional().trim(),
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
-  const { email_address, first_name, last_name, phone_number } = req.body;
+
+  const userId = req.params.id; 
+  const { email_address, first_name, last_name, phone_number, password } = req.body;
   const dataToUpdate = {
+    ...(email_address && { email_address }), 
     ...(first_name && { first_name }),
     ...(last_name && { last_name }),
     ...(phone_number && { phone_number }),
+    ...(password && { password }), 
   };
-  if (req.body.password) {
-    const { password } = req.body;
-    dataToUpdate.password = password;
-  }
-  db.query('UPDATE users SET ? WHERE email_address = ?', [dataToUpdate, email_address], (err, results) => {
+
+
+  db.query('UPDATE users SET ? WHERE user_id = ?', [dataToUpdate, userId], (err, results) => {
     if (err) {
+      console.error("Error al realizar la actualización:", err);
       return res.status(500).json({ message: 'Error al actualizar la base de datos.' });
     }
     if (results.affectedRows > 0) {
       res.json({ message: 'Perfil actualizado con éxito.' });
     } else {
-      res.status(404).json({ message: 'Usuario no encontrado con ese correo electrónico.' });
+      res.status(404).json({ message: 'Usuario no encontrado.' });
     }
   });
 });
+
+
+
   app.get('/post', (req, res) => {
     db.query('SELECT * FROM post', (err, results) => {
       if (err) throw err;
