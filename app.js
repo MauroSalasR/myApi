@@ -24,7 +24,6 @@ db.connect((err) => {
   console.log('Conectado a la base de datos MySQL');
 });
 
-// Obtener datos
 app.get('/datos', (req, res) => {
   db.query('SELECT * FROM users', (err, results) => {
     if (err) throw err;
@@ -33,44 +32,32 @@ app.get('/datos', (req, res) => {
 });
 
 app.post('/users/login', (req, res) => {
-    const { email_address, password } = req.body;
-    // console.log("Hola", req.body)
-    if (!email_address || !password) {
+  const { email_address, password } = req.body;
+  if (!email_address || !password) {
       return res.status(400).json({ message: 'Email y contraseña son requeridos.' });
-    }
-
-  // console.log("Email proporcionado:", email_address);
-  // console.log("Contraseña proporcionada:", password);
+  }
   db.query('SELECT * FROM users WHERE email_address = ?', [email_address], async (err, results) => {
-    if (err) {
-        // console.error("Error al realizar la consulta:", err);
-        return res.status(500).json({ message: 'Error al consultar la base de datos.' });
-    }
-    console.log("Resultados de la consulta:", results);
-    if (results.length > 0) {
-        const user = results[0];
-        // console.log("Usuario encontrado:", user);
-        const match = password === user.password;
-        // console.log("¿Contraseña coincide?:", match);
-        if (match) {
-          console.log('match', match)
-          res.status(200).json({ message: 'Inicio de sesión exitoso.', user: { id: user.id, email: user.email_address }});
-        } else {
-          res.status(401).json({ message: 'Contraseña incorrecta.' });
-        }
-      } else {
-        res.status(404).json({ message: 'Usuario no encontrado.' });
+      if (err) {
+          return res.status(500).json({ message: 'Error al consultar la base de datos.' });
       }
-    });
+      if (results.length > 0) {
+          const user = results[0];
+          const match = password === user.password;
+          if (match) {
+              res.status(200).json({ message: 'Inicio de sesión exitoso.', user: { id: user.user_id }});
+          } else {
+              res.status(401).json({ message: 'Contraseña incorrecta.' });
+          }
+      } else {
+          res.status(404).json({ message: 'Usuario no encontrado.' });
+      }
   });
-  
-  
-// Obtener perfil de usuario por ID
+});
+
 app.get('/users/:id', (req, res) => {
   const { id } = req.params;
   db.query('SELECT * FROM users WHERE user_id = ?', [id], (err, results) => {
       if (err) {
-          console.error("Error al realizar la consulta:", err);
           return res.status(500).json({ message: 'Error al consultar la base de datos.' });
       }
       if (results.length > 0) {
@@ -81,42 +68,28 @@ app.get('/users/:id', (req, res) => {
   });
 });
 
-// Endpoint para actualizar los datos de un usuario basado en su correo electrónico
 app.put('/users/update', [
   body('email_address').isEmail().withMessage('Debe proporcionar un correo electrónico válido.'),
   body('first_name').optional().trim().escape(),
   body('last_name').optional().trim().escape(),
   body('phone_number').optional().trim().escape(),
-  // Agregar más validaciones si es necesario
 ], (req, res) => {
-  // Verificar si hay errores de validación
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
-
-  // Extrayendo datos del cuerpo de la solicitud
   const { email_address, first_name, last_name, phone_number } = req.body;
-
-  // Creando un objeto con los datos a actualizar
   const dataToUpdate = {
     ...(first_name && { first_name }),
     ...(last_name && { last_name }),
     ...(phone_number && { phone_number }),
-    // Agregar más campos si es necesario
   };
-
-  // Verifica si se ha enviado una nueva contraseña y si es válida
   if (req.body.password) {
     const { password } = req.body;
-    // Agregar aquí la lógica de validación o encriptación de la contraseña si es necesario
     dataToUpdate.password = password;
   }
-
-  // Realizar la actualización usando el correo electrónico como clave
   db.query('UPDATE users SET ? WHERE email_address = ?', [dataToUpdate, email_address], (err, results) => {
     if (err) {
-      console.error("Error al realizar la actualización:", err);
       return res.status(500).json({ message: 'Error al actualizar la base de datos.' });
     }
     if (results.affectedRows > 0) {
@@ -126,7 +99,6 @@ app.put('/users/update', [
     }
   });
 });
-
   app.get('/post', (req, res) => {
     db.query('SELECT * FROM post', (err, results) => {
       if (err) throw err;
