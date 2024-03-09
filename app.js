@@ -64,6 +64,7 @@ app.post('/users/login', (req, res) => {
     });
   });
   
+  
 // Obtener perfil de usuario por ID
 app.get('/users/:id', (req, res) => {
   const { id } = req.params;
