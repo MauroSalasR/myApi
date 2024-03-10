@@ -3,9 +3,27 @@ const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { body, validationResult } = require('express-validator');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 
+const dotenv = require('dotenv');
+const fileUpload = require('express-fileupload');
+
+dotenv.config();
+
+
+const client = new S3Client({
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  },
+});
 
 const app = express();
+
+app.use(express.json());
+
+app.use(fileUpload());
+
 const port = 3000;
 
 app.use(cors());
@@ -13,10 +31,10 @@ app.use(bodyParser.json());
 
 // Configuración de la conexión a la base de datos
 const db = mysql.createConnection({
-  host: 'petpatrol.ch4ga6k2yl99.us-east-2.rds.amazonaws.com',
-  user: 'admin',
-  password: 'Crhis240611',
-  database: 'petpatrol_db'
+  host: process.env.HOST,
+  user: process.env.ADMIN,
+  password: process.env.PASSWORD,
+  database: process.env.DATABASE
 });
 
 db.connect((err) => {
@@ -211,6 +229,36 @@ app.delete('/datos/:id', (req, res) => {
     res.json({ success: true });
   });
 });
+
+app.post('/post/create', async (req, res) => {
+
+  // const postData = { 
+  //   name_post: 'Post de prueba para perritos',
+  //   description: 'Este es un post de prueba para perritos',
+  //  } // esto viene desde el req.body
+
+   const imagen_del_post = req.files.image;
+   console.log(imagen_del_post)
+
+  // /** Esta parte es la insercion a la bd de mysql */
+
+  const postId = 1; // Este valor debe venir de la base de datos
+  
+  const command = new PutObjectCommand({
+    Bucket: process.env.BUCKET_NAME,
+    Key: postId.toString(),
+    Body: imagen_del_post.data,
+    ContentType: imagen_del_post.mimetype, 
+    ACL: 'public-read'
+  });
+
+  await client.send(command);
+
+  return res.json({ message: 'Imagen subida con éxito.' });
+
+}
+
+);
 
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
