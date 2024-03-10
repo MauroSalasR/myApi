@@ -104,7 +104,38 @@ app.put('/users/update/:id', [
   });
 });
 
+app.post('/users/register', [
+  body('first_name').notEmpty().withMessage('El nombre es requerido.'),
+  body('last_name').notEmpty().withMessage('El apellido es requerido.'),
+  body('email_address').isEmail().withMessage('Debe proporcionar un correo electrónico válido.'),
+  body('phone_number').isMobilePhone('es-PE').withMessage('Debe proporcionar un número de teléfono válido.'),
+  body('password').isLength({ min: 5 }).withMessage('La contraseña debe tener al menos 5 caracteres.')
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
 
+  const { first_name, last_name, email_address, phone_number, password } = req.body;
+
+  db.query('SELECT * FROM users WHERE email_address = ?', [email_address], (err, results) => {
+    if (err) {
+      console.error("Error al consultar la base de datos:", err);
+      return res.status(500).json({ message: 'Error al consultar la base de datos.' });
+    }
+    if (results.length > 0) {
+      return res.status(400).json({ message: 'El correo electrónico ya está registrado.' });
+    }
+
+    db.query('INSERT INTO users (first_name, last_name, email_address, phone_number, password) VALUES (?, ?, ?, ?, ?)', [first_name, last_name, email_address, phone_number, password], (err, results) => {
+      if (err) {
+        console.error("Error al registrar el usuario:", err);
+        return res.status(500).json({ message: 'Error al registrar el usuario.' });
+      }
+      res.status(201).json({ message: 'Usuario registrado exitosamente.' });
+    });
+  });
+});
 
   app.get('/post', (req, res) => {
     db.query('SELECT * FROM post', (err, results) => {
