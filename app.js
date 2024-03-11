@@ -21,6 +21,7 @@ const client = new S3Client({
 const app = express();
 
 app.use(express.json());
+app.use(express.urlencoded({extended:true}));
 app.use(fileUpload());
 
 const port = 3000;
@@ -249,103 +250,78 @@ app.delete('/datos/:id', (req, res) => {
 });
 
 
+global.id_post = null;
 
 
-// app.post('/post/create', async (req, res) => {
-
-//   // const postData = { 
-//   //   name_post: 'Post de prueba para perritos',
-//   //   description: 'Este es un post de prueba para perritos',
-//   //  } // esto viene desde el req.body
-
-//    const imagen_del_post = req.files.create;
-//    console.log(imagen_del_post)
-
-//   // /** Esta parte es la insercion a la bd de mysql */
-
-//   const postId = 1; // Este valor debe venir de la base de datos
-  
-//   const command = new PutObjectCommand({
-//     Bucket: process.env.BUCKET_NAME,
-//     Key: postId.toString(),
-//     Body: imagen_del_post.data,
-//     ContentType: imagen_del_post.mimetype, 
-//     ACL: 'public-read'
-//   });
-
-//   await client.send(command);
-
-//   return res.json({ message: 'Imagen subida con éxito.' });
-
-// }
-
-// );
-
-app.post('/crearMascotaYPost', (req, res) => {
+app.post('/crearMascotaYPost', async (req, res) => {
   const { name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id, tipo_post } = req.body;
+  const imagen_del_post = req.files ? req.files.image : null;
 
-  // Iniciar la transacción
-  db.beginTransaction(err => {
-    if (err) {
-      console.error('Error al iniciar la transacción:', err);
-      return res.status(500).json({ message: 'Error al iniciar la transacción', error: err });
-    }
-
-    // Inserción en la tabla mascota
-    const insertMascotaQuery = 'INSERT INTO mascota (name_mascota, contenido_mascota, fch_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id) VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)';
-    db.query(insertMascotaQuery, [name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id], (err, resultsMascota) => {
+  db.beginTransaction(async (err) => {
       if (err) {
-        return db.rollback(() => {
-          console.error('Error al insertar en mascota:', err);
-          return res.status(500).json({ message: 'Error al insertar en mascota', error: err });
-        });
+          console.error('Error al iniciar la transacción:', err);
+          return res.status(500).json({ message: 'Error al iniciar la transacción', error: err });
       }
 
-      const id_mascota = resultsMascota.insertId;
+      try {
+          // Insertar mascota
+          const insertMascotaQuery = `
+          INSERT INTO mascota 
+          (name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id, fch_mascota)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`;
+          const [mascotaResult] = await db.promise().query(insertMascotaQuery, [name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id]);
+          const id_mascota = mascotaResult.insertId;
 
-      // Inserción en la tabla post
-      const insertPostQuery = 'INSERT INTO post (fch_post, user_id, id_mascota, tipo_post) VALUES (NOW(), ?, ?, ?)';
-      db.query(insertPostQuery, [user_id, id_mascota, tipo_post], (err, resultsPost) => {
-        if (err) {
-          return db.rollback(() => {
-            console.error('Error al insertar en post:', err);
-            return res.status(500).json({ message: 'Error al insertar post', error: err });
-          });
-        }
+          // Insertar post
+          const insertPostQuery = `
+          INSERT INTO post 
+          (user_id, id_mascota, tipo_post, fch_post)
+          VALUES (?, ?, ?, NOW())`;
 
-        const id_post = resultsPost.insertId;
+          const [postResult] = await db.promise().query(insertPostQuery, [user_id, id_mascota, tipo_post]);
+          const id_post = postResult.insertId;
+          console.log("Consulta a ejecutar:", insertPostQuery);
+          console.log("Valores:", [user_id, id_mascota, tipo_post]);
 
-        // Actualizar la columna id_post en la tabla mascota
-        const updateMascotaQuery = 'UPDATE mascota SET id_post = ? WHERE id_mascota = ?';
-        db.query(updateMascotaQuery, [id_post, id_mascota], (err, resultsUpdate) => {
-          if (err) {
-            return db.rollback(() => {
-              console.error('Error al actualizar mascota con id_post:', err);
-              return res.status(500).json({ message: 'Error al actualizar mascota con id_post', error: err });
-            });
+          const updateMascotaQuery = 'UPDATE mascota SET id_post = ? WHERE id_mascota = ?';
+          await db.promise().query(updateMascotaQuery, [id_post, id_mascota]);
+          // Subir imagen a S3, si existe
+          let imageUrl = null;
+          if (imagen_del_post) {
+              const command = new PutObjectCommand({
+                  Bucket: process.env.BUCKET_NAME,
+                  Key: `${id_post.toString()}`,
+                  Body: imagen_del_post.data,
+                  ContentType: imagen_del_post.mimetype,
+                  ACL: 'public-read',
+              });
+              const data = await client.send(command);
+              imageUrl = `https://${process.env.BUCKET_NAME}.s3.amazonaws.com/${id_post.toString()}`;
           }
 
-          // Si todo sale bien, confirmamos la transacción
-          db.commit(err => {
-            if (err) {
-              return db.rollback(() => {
-                console.error('Error al confirmar la transacción:', err);
-                return res.status(500).json({ message: 'Error al confirmar la transacción', error: err });
-              });
-            }
-            res.status(201).json({
-              message: 'Mascota y Post creados y vinculados exitosamente',
-              mascotaId: id_mascota,
-              postId: id_post
-            });
+          db.commit((err) => {
+              if (err) {
+                  db.rollback(() => {
+                      console.error('Error al confirmar la transacción:', err);
+                      return res.status(500).json({ message: 'Error al confirmar la transacción', error: err });
+                  });
+              } else {
+                  res.status(201).json({
+                      message: 'Mascota, post e imagen creados exitosamente',
+                      mascotaId: id_mascota,
+                      postId: id_post,
+                      imageUrl: imageUrl
+                  });
+              }
           });
-        });
-      });
-    });
+      } catch (error) {
+          db.rollback(() => {
+              console.error('Error durante la creación de mascota/post:', error);
+              res.status(500).json({ message: 'Error al crear mascota y post', error: error });
+          });
+      }
   });
 });
-
-
 
 
 
