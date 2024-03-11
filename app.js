@@ -10,18 +10,17 @@ const fileUpload = require('express-fileupload');
 
 dotenv.config();
 
-
 const client = new S3Client({
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
   },
+  region: "us-east-2",
 });
 
 const app = express();
 
 app.use(express.json());
-
 app.use(fileUpload());
 
 const port = 3000;
@@ -155,43 +154,42 @@ app.post('/users/register', [
   });
 });
 
-  app.get('/post', (req, res) => {
+app.get('/post', (req, res) => {
     db.query('SELECT * FROM post', (err, results) => {
       if (err) throw err;
       res.json(results);
     });
-  });
+});
 
-  app.get('/tipoPost', (req, res) => {
+//adoptar, ayudar, cruce
+app.get('/tipoPost', (req, res) => {
     db.query('SELECT * FROM tipo_post', (err, results) => {
       if (err) throw err;
       res.json(results);
     });
-  });
+});
 
-  app.get('/distritos', (req, res) => {
+app.get('/distritos', (req, res) => {
     db.query('SELECT * FROM distrito', (err, results) => {
       if (err) {
         console.error("Error al realizar la consulta:", err);
         return res.status(500).json({ message: 'Error al consultar la base de datos.' });
       }
-      // Enviamos los resultados de la consulta al cliente
       res.json(results);
     });
-  });
+});
 
-  app.get('/edadMascotas', (req, res) => {
-    db.query('SELECT * FROM edad_mascota', (err, results) => {
+app.get('/edadMascotas', (req, res) => {
+  db.query('SELECT * FROM edad_mascota', (err, results) => {
       if (err) {
         console.error("Error al realizar la consulta:", err);
         return res.status(500).json({ message: 'Error al consultar la base de datos.' });
       }
-      // Enviamos los resultados de la consulta al cliente
       res.json(results);
-    });
   });
+});
 
-  app.get('/tipoMascotas', (req, res) => {
+app.get('/tipoMascotas', (req, res) => {
     db.query('SELECT * FROM tipo_mascota', (err, results) => {
       if (err) {
         console.error("Error al realizar la consulta:", err);
@@ -200,7 +198,27 @@ app.post('/users/register', [
       // Enviamos los resultados de la consulta al cliente
       res.json(results);
     });
+});
+
+app.get('/sizeMascotas', (req, res) => {
+  db.query('SELECT * FROM size_mascota', (err, results) => {
+    if (err) {
+      console.error("Error al realizar la consulta:", err);
+      return res.status(500).json({ message: 'Error al consultar la base de datos.' });
+    }
+    res.json(results);
   });
+});
+
+app.get('/sexoMascotas', (req, res) => {
+  db.query('SELECT * FROM sexo_mascota', (err, results) => {
+    if (err) {
+      console.error("Error al realizar la consulta:", err);
+      return res.status(500).json({ message: 'Error al consultar la base de datos.' });
+    }
+    res.json(results);
+  });
+});
 
 // Insertar datos
 app.post('/datos', (req, res) => {
@@ -230,36 +248,108 @@ app.delete('/datos/:id', (req, res) => {
   });
 });
 
-app.post('/post/create', async (req, res) => {
 
-  // const postData = { 
-  //   name_post: 'Post de prueba para perritos',
-  //   description: 'Este es un post de prueba para perritos',
-  //  } // esto viene desde el req.body
 
-   const imagen_del_post = req.files.image;
-   console.log(imagen_del_post)
 
-  // /** Esta parte es la insercion a la bd de mysql */
+// app.post('/post/create', async (req, res) => {
 
-  const postId = 1; // Este valor debe venir de la base de datos
+//   // const postData = { 
+//   //   name_post: 'Post de prueba para perritos',
+//   //   description: 'Este es un post de prueba para perritos',
+//   //  } // esto viene desde el req.body
+
+//    const imagen_del_post = req.files.create;
+//    console.log(imagen_del_post)
+
+//   // /** Esta parte es la insercion a la bd de mysql */
+
+//   const postId = 1; // Este valor debe venir de la base de datos
   
-  const command = new PutObjectCommand({
-    Bucket: process.env.BUCKET_NAME,
-    Key: postId.toString(),
-    Body: imagen_del_post.data,
-    ContentType: imagen_del_post.mimetype, 
-    ACL: 'public-read'
+//   const command = new PutObjectCommand({
+//     Bucket: process.env.BUCKET_NAME,
+//     Key: postId.toString(),
+//     Body: imagen_del_post.data,
+//     ContentType: imagen_del_post.mimetype, 
+//     ACL: 'public-read'
+//   });
+
+//   await client.send(command);
+
+//   return res.json({ message: 'Imagen subida con éxito.' });
+
+// }
+
+// );
+
+app.post('/crearMascotaYPost', (req, res) => {
+  const { name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id, tipo_post } = req.body;
+
+  // Iniciar la transacción
+  db.beginTransaction(err => {
+    if (err) {
+      console.error('Error al iniciar la transacción:', err);
+      return res.status(500).json({ message: 'Error al iniciar la transacción', error: err });
+    }
+
+    // Inserción en la tabla mascota
+    const insertMascotaQuery = 'INSERT INTO mascota (name_mascota, contenido_mascota, fch_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id) VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)';
+    db.query(insertMascotaQuery, [name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id], (err, resultsMascota) => {
+      if (err) {
+        return db.rollback(() => {
+          console.error('Error al insertar en mascota:', err);
+          return res.status(500).json({ message: 'Error al insertar en mascota', error: err });
+        });
+      }
+
+      const id_mascota = resultsMascota.insertId;
+
+      // Inserción en la tabla post
+      const insertPostQuery = 'INSERT INTO post (fch_post, user_id, id_mascota, tipo_post) VALUES (NOW(), ?, ?, ?)';
+      db.query(insertPostQuery, [user_id, id_mascota, tipo_post], (err, resultsPost) => {
+        if (err) {
+          return db.rollback(() => {
+            console.error('Error al insertar en post:', err);
+            return res.status(500).json({ message: 'Error al insertar post', error: err });
+          });
+        }
+
+        const id_post = resultsPost.insertId;
+
+        // Actualizar la columna id_post en la tabla mascota
+        const updateMascotaQuery = 'UPDATE mascota SET id_post = ? WHERE id_mascota = ?';
+        db.query(updateMascotaQuery, [id_post, id_mascota], (err, resultsUpdate) => {
+          if (err) {
+            return db.rollback(() => {
+              console.error('Error al actualizar mascota con id_post:', err);
+              return res.status(500).json({ message: 'Error al actualizar mascota con id_post', error: err });
+            });
+          }
+
+          // Si todo sale bien, confirmamos la transacción
+          db.commit(err => {
+            if (err) {
+              return db.rollback(() => {
+                console.error('Error al confirmar la transacción:', err);
+                return res.status(500).json({ message: 'Error al confirmar la transacción', error: err });
+              });
+            }
+            res.status(201).json({
+              message: 'Mascota y Post creados y vinculados exitosamente',
+              mascotaId: id_mascota,
+              postId: id_post
+            });
+          });
+        });
+      });
+    });
   });
+});
 
-  await client.send(command);
 
-  return res.json({ message: 'Imagen subida con éxito.' });
 
-}
 
-);
 
+//Escuchando
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
 });
