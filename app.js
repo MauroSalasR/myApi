@@ -252,7 +252,6 @@ app.delete('/datos/:id', (req, res) => {
 
 global.id_post = null;
 
-
 app.post('/crearMascotaYPost', async (req, res) => {
   const { name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id, tipo_post } = req.body;
   const imagen_del_post = req.files ? req.files.image : null;
@@ -272,19 +271,21 @@ app.post('/crearMascotaYPost', async (req, res) => {
           const [mascotaResult] = await db.promise().query(insertMascotaQuery, [name_mascota, contenido_mascota, id_distrito, id_edad, id_sexo, id_size, id_tipo, user_id]);
           const id_mascota = mascotaResult.insertId;
 
-          // Insertar post
           const insertPostQuery = `
           INSERT INTO post 
           (user_id, id_mascota, tipo_post, fch_post)
           VALUES (?, ?, ?, NOW())`;
 
           const [postResult] = await db.promise().query(insertPostQuery, [user_id, id_mascota, tipo_post]);
-          const id_post = postResult.insertId;
-          console.log("Consulta a ejecutar:", insertPostQuery);
-          console.log("Valores:", [user_id, id_mascota, tipo_post]);
+          const id_post = postResult.insertId; // Obtener el id_post recién insertado
 
+          console.log("Consulta a ejecutar:", insertPostQuery);
+          console.log("Valores:", [user_id, id_mascota, tipo_post, id_distrito]);
+
+          // Actualizar la columna id_post en la tabla mascota
           const updateMascotaQuery = 'UPDATE mascota SET id_post = ? WHERE id_mascota = ?';
           await db.promise().query(updateMascotaQuery, [id_post, id_mascota]);
+
           // Subir imagen a S3, si existe
           let imageUrl = null;
           if (imagen_del_post) {
@@ -322,6 +323,8 @@ app.post('/crearMascotaYPost', async (req, res) => {
       }
   });
 });
+
+
 
 
 
