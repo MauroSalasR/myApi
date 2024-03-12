@@ -300,6 +300,14 @@ app.post('/crearMascotaYPost', async (req, res) => {
               imageUrl = `https://${process.env.BUCKET_NAME}.s3.amazonaws.com/${id_post.toString()}`;
           }
 
+          console.log("req.files:", req.files);
+          if (req.files) {
+          console.log("Imagen recibida:", req.files.image);
+          } else {
+              console.log("No se recibió ningún archivo");
+          }
+
+          console.log("image", imageUrl)
           db.commit((err) => {
               if (err) {
                   db.rollback(() => {
@@ -324,6 +332,163 @@ app.post('/crearMascotaYPost', async (req, res) => {
   });
 });
 
+app.get('/posts', (req, res) => {
+  const tipoPost = req.query.tipo_post;
+  
+  let query = `
+    SELECT post.*, mascota.name_mascota, mascota.contenido_mascota, mascota.id_distrito, mascota.id_edad, mascota.id_sexo, mascota.id_size 
+    FROM post
+    JOIN mascota ON post.id_mascota = mascota.id_mascota
+    WHERE post.tipo_post = 1`;
+
+  db.query(query, [tipoPost], (err, results) => {
+    if (err) {
+      console.error("Error al obtener los posts con detalles de mascota:", err);
+      return res.status(500).json({ message: 'Error al consultar los posts y detalles de mascota.', error: err });
+    }
+    const formattedResults = results.map(result => {
+      return {
+        ...result,
+        imageUrl: `https://${process.env.BUCKET_NAME}.s3.amazonaws.com/${result.id_post}`
+      };
+    });
+    res.json(formattedResults);
+  });
+});
+
+app.get('/posts2', (req, res) => {
+  const tipoPost = req.query.tipo_post;
+  
+  let query = `
+    SELECT post.*, mascota.name_mascota, mascota.contenido_mascota, mascota.id_distrito, mascota.id_edad, mascota.id_sexo, mascota.id_size 
+    FROM post
+    JOIN mascota ON post.id_mascota = mascota.id_mascota
+    WHERE post.tipo_post = 2`;
+
+  db.query(query, [tipoPost], (err, results) => {
+    if (err) {
+      console.error("Error al obtener los posts con detalles de mascota:", err);
+      return res.status(500).json({ message: 'Error al consultar los posts y detalles de mascota.', error: err });
+    }
+    const formattedResults = results.map(result => {
+      return {
+        ...result,
+        imageUrl: `https://${process.env.BUCKET_NAME}.s3.amazonaws.com/${result.id_post}`
+      };
+    });
+    res.json(formattedResults);
+  });
+});
+
+app.get('/posts3', (req, res) => {
+  const tipoPost = req.query.tipo_post;
+  
+  let query = `
+    SELECT post.*, mascota.name_mascota, mascota.contenido_mascota, mascota.id_distrito, mascota.id_edad, mascota.id_sexo, mascota.id_size 
+    FROM post
+    JOIN mascota ON post.id_mascota = mascota.id_mascota
+    WHERE post.tipo_post = 3`;
+
+  db.query(query, [tipoPost], (err, results) => {
+    if (err) {
+      console.error("Error al obtener los posts con detalles de mascota:", err);
+      return res.status(500).json({ message: 'Error al consultar los posts y detalles de mascota.', error: err });
+    }
+    const formattedResults = results.map(result => {
+      return {
+        ...result,
+        imageUrl: `https://${process.env.BUCKET_NAME}.s3.amazonaws.com/${result.id_post}`
+      };
+    });
+    res.json(formattedResults);
+  });
+});
+
+
+app.post('/filtrarMascotas', (req, res) => {
+  const { id_distrito, id_edad, id_sexo, id_size, id_tipo } = req.body;
+
+  // Crear la consulta SQL dinámica basada en los parámetros proporcionados
+  let query = `
+    SELECT mascota.id_mascota, mascota.name_mascota, mascota.contenido_mascota, mascota.id_post,
+           mascota.id_distrito, mascota.id_edad, mascota.id_sexo, mascota.id_size, mascota.id_tipo,
+           post.fch_post AS fecha_post
+    FROM mascota
+    INNER JOIN post ON mascota.id_post = post.id_post
+    WHERE 1 = 1
+  `;
+
+  const params = [];
+
+  // Agregar condiciones según los parámetros proporcionados
+  if (id_distrito) {
+    query += ' AND mascota.id_distrito = ?';
+    params.push(id_distrito);
+  }
+
+  if (id_edad) {
+    query += ' AND mascota.id_edad = ?';
+    params.push(id_edad);
+  }
+
+  if (id_sexo) {
+    query += ' AND mascota.id_sexo = ?';
+    params.push(id_sexo);
+  }
+
+  if (id_size) {
+    query += ' AND mascota.id_size = ?';
+    params.push(id_size);
+  }
+
+  if (id_tipo) {
+    query += ' AND mascota.id_tipo = ?';
+    params.push(id_tipo);
+  }
+
+  // Ejecutar la consulta con los parámetros
+  db.query(query, params, async (err, results) => {
+    if (err) {
+      console.error("Error al filtrar las mascotas:", err);
+      return res.status(500).json({ message: 'Error al consultar las mascotas.', error: err });
+    }
+
+    const formattedResults = await Promise.all(results.map(async (result) => {
+      // Obtener la URL de la imagen del post desde AWS S3
+      const imageUrl = await getImageUrlFromS3(result.id_post);
+      return {
+        id_mascota: result.id_mascota,
+        name_mascota: result.name_mascota,
+        contenido_mascota: result.contenido_mascota,
+        id_post: result.id_post,
+        id_distrito: result.id_distrito,
+        id_edad: result.id_edad,
+        id_sexo: result.id_sexo,
+        id_size: result.id_size,
+        id_tipo: result.id_tipo,
+        fecha_post: result.fecha_post,
+        imageUrl: imageUrl
+      };
+    }));
+
+    res.json(formattedResults);
+  });
+});
+
+// Función para obtener la URL de la imagen del post desde AWS S3
+async function getImageUrlFromS3(postId) {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: process.env.BUCKET_NAME,
+      Key: postId.toString(),
+    });
+    const { ContentLength, ContentType } = await client.send(command);
+    return `https://${process.env.BUCKET_NAME}.s3.amazonaws.com/${postId.toString()}`;
+  } catch (error) {
+    console.error("Error al obtener la imagen del post desde S3:", error);
+    return null;
+  }
+}
 
 
 
